@@ -22,9 +22,10 @@ public record MoveRequest(
 		@Schema(example = "1", description = "Beds this person holds. Omit for 1.")
 		Integer spots,
 
+		@NotNull
 		@DecimalMin("0.00")
 		@Digits(integer = 8, fraction = 2)
-		@Schema(example = "7500.00", description = "Omit to use the room's per-person rent times spots")
+		@Schema(example = "7500.00", description = "Monthly agreed rent for this stay. Defaults in the UI to the room's per-person rent times spots")
 		BigDecimal agreedRent
 ) {
 }

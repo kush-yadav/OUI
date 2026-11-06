@@ -28,16 +28,6 @@ public record RoomRequest(
 		BigDecimal defaultMonthlyRent,
 
 		@Schema(example = "1")
-		Integer floor,
-
-		@Schema(example = "true")
-		Boolean ac,
-
-		@Schema(example = "false")
-		Boolean attachedBathroom,
-
-		@Size(max = 500)
-		@Schema(example = "Street facing")
-		String notes
+		Integer floor
 ) {
 }

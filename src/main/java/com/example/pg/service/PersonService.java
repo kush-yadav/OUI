@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -91,9 +92,14 @@ public class PersonService {
 		Map<Long, Stay> openByPerson = stayRepository.findOpen().stream()
 				.collect(Collectors.toMap(open -> open.getPerson().getId(), Function.identity()));
 		Set<Long> peopleWithClosedStay = stayRepository.findPersonIdsWithClosedStay();
+		Set<Long> withIdentity = new HashSet<>(identityDocumentRepository.findPersonIds());
 		return personRepository.findAllByOrderByNameAsc().stream()
 				.filter(person -> filter.includes(left(person.getId(), openByPerson, peopleWithClosedStay)))
-				.map(person -> toSummary(person, openByPerson.get(person.getId())))
+				.map(person -> toSummary(
+						person,
+						openByPerson.get(person.getId()),
+						withIdentity.contains(person.getId()),
+						left(person.getId(), openByPerson, peopleWithClosedStay)))
 				.toList();
 	}
 
@@ -196,7 +202,6 @@ public class PersonService {
 				person.getId(),
 				person.getName(),
 				person.getPhone(),
-				person.getEmail(),
 				person.getNotes(),
 				current == null ? null : toCurrentRoom(current),
 				pastStays,
@@ -229,20 +234,23 @@ public class PersonService {
 	private static void apply(Person person, PersonRequest request) {
 		person.setName(request.name().trim());
 		person.setPhone(request.phone().trim());
-		person.setEmail(blankToNull(request.email()));
 		person.setNotes(blankToNull(request.notes()));
 	}
 
-	private static PersonSummaryResponse toSummary(Person person, Stay current) {
+	private static PersonSummaryResponse toSummary(Person person, Stay current, boolean hasIdentity, boolean hasLeft) {
+		String stayStatus = current != null ? "active" : hasLeft ? "past" : "inactive";
 		if (current == null) {
-			return new PersonSummaryResponse(person.getId(), person.getName(), person.getPhone(), null, null);
+			return new PersonSummaryResponse(person.getId(), person.getName(), person.getPhone(), null, null, null, hasIdentity, stayStatus);
 		}
 		return new PersonSummaryResponse(
 				person.getId(),
 				person.getName(),
 				person.getPhone(),
 				current.getRoom().getId(),
-				current.getRoom().getName());
+				current.getRoom().getName(),
+				current.getSpots(),
+				hasIdentity,
+				stayStatus);
 	}
 
 	private static CurrentRoomResponse toCurrentRoom(Stay stay) {

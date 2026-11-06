@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
@@ -16,5 +17,12 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 			where payment.id = :paymentId and person.id = :personId
 			""")
 	Optional<Payment> findForPerson(@Param("paymentId") Long paymentId, @Param("personId") Long personId);
+
+	@Query("""
+			select payment from Payment payment
+			join fetch payment.rentLine line
+			where line.person.id = :personId
+			""")
+	List<Payment> findByPersonId(@Param("personId") Long personId);
 
 }

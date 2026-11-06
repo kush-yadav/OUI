@@ -5,6 +5,9 @@ public record PersonSummaryResponse(
 		String name,
 		String phone,
 		Long roomId,
-		String roomName
+		String roomName,
+		Integer spots,
+		boolean hasIdentity,
+		String stayStatus
 ) {
 }

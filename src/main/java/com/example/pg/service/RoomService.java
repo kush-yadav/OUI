@@ -98,9 +98,6 @@ public class RoomService {
 		room.setSharingCapacity(request.sharingCapacity());
 		room.setDefaultMonthlyRent(request.defaultMonthlyRent().setScale(2, RoundingMode.HALF_UP));
 		room.setFloor(request.floor());
-		room.setAc(request.ac());
-		room.setAttachedBathroom(request.attachedBathroom());
-		room.setNotes(request.notes());
 	}
 
 	private RoomResponse toResponse(Room room) {
@@ -112,11 +109,9 @@ public class RoomService {
 				room.getSharingCapacity(),
 				room.getDefaultMonthlyRent(),
 				room.getFloor(),
-				room.getAc(),
-				room.getAttachedBathroom(),
-				room.getNotes(),
 				occupied,
 				room.getSharingCapacity() - occupied,
+				List.of(),
 				open.stream()
 						.map(stay -> new CurrentResidentResponse(stay.getPerson().getId(), stay.getPerson().getName(), stay.getSpots()))
 						.toList());
@@ -130,6 +125,7 @@ public class RoomService {
 		return new RoomSummaryResponse(
 				room.getId(),
 				room.getName(),
+				room.getFloor(),
 				room.getSharingCapacity(),
 				room.getDefaultMonthlyRent(),
 				occupied,

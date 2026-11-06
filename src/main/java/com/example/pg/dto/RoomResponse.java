@@ -9,11 +9,9 @@ public record RoomResponse(
 		int sharingCapacity,
 		BigDecimal defaultMonthlyRent,
 		Integer floor,
-		Boolean ac,
-		Boolean attachedBathroom,
-		String notes,
 		int occupiedCount,
 		int freeSpots,
+		List<String> amenities,
 		List<CurrentResidentResponse> currentResidents
 ) {
 }

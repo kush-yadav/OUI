@@ -6,6 +6,7 @@ import com.example.pg.dto.PaymentResponse;
 import com.example.pg.dto.PaymentScreenshotResponse;
 import com.example.pg.dto.RentHistoryResponse;
 import com.example.pg.dto.RentLineResponse;
+import com.example.pg.dto.RentSliceResponse;
 import com.example.pg.dto.RevenueResponse;
 import com.example.pg.entity.Payment;
 import com.example.pg.entity.PaymentScreenshot;
@@ -28,6 +29,8 @@ import java.math.RoundingMode;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -91,11 +94,17 @@ public class RentService {
 			throw new BadRequestException("amount must be greater than zero");
 		}
 		YearMonth parsedMonth = month(request.month());
-		Stay stay = determining(stayRepository.findByPersonId(personId), parsedMonth);
-		if (stay == null) {
+		if (parsedMonth.isAfter(currentMonth())) {
+			throw new BadRequestException("Cannot record rent for a future month");
+		}
+		List<Stay> stays = stayRepository.findByPersonId(personId);
+		if (determining(stays, parsedMonth) == null) {
 			throw new BadRequestException("Person did not stay in that month");
 		}
-		RentLine line = ensureLine(stay, parsedMonth);
+		RentLine line = ensureLine(stays, parsedMonth);
+		if (line == null) {
+			throw new BadRequestException("Person did not stay in that month");
+		}
 		BigDecimal amount = money(request.amount());
 		BigDecimal balance = balance(line);
 		if (amount.compareTo(balance) > 0) {
@@ -149,35 +158,54 @@ public class RentService {
 				.orElseThrow();
 		YearMonth lastCovered = stays.stream()
 				.map(stay -> stay.getMoveOutDate() == null
-						? YearMonth.now()
+						? currentMonth()
 						: YearMonth.from(stay.getMoveOutDate()))
 				.max(Comparator.naturalOrder())
 				.orElseThrow();
-		YearMonth last = lastCovered.isAfter(YearMonth.now()) ? YearMonth.now() : lastCovered;
+		YearMonth last = lastCovered.isAfter(currentMonth()) ? currentMonth() : lastCovered;
 		if (!first.isAfter(last)) {
 			for (YearMonth month = first; !month.isAfter(last); month = month.plusMonths(1)) {
-				Stay stay = determining(stays, month);
-				if (stay != null) {
-					ensureLine(stay, month);
+				if (month.isAfter(currentMonth())) {
+					break;
+				}
+				if (determining(stays, month) != null) {
+					ensureLine(stays, month);
 				}
 			}
 		}
 		removeUnpaidUncovered(personId, stays);
+		removeUnpaidFuture();
+		Map<Long, Payment> latestPayment = paymentRepository.findByPersonId(personId).stream()
+				.collect(Collectors.toMap(
+						payment -> payment.getRentLine().getId(),
+						payment -> payment,
+						(left, right) -> {
+							int byDate = left.getPaidOn().compareTo(right.getPaidOn());
+							if (byDate != 0) {
+								return byDate > 0 ? left : right;
+							}
+							return left.getId() >= right.getId() ? left : right;
+						}));
 		return rentLineRepository.findByPersonId(personId).stream()
-				.map(this::toHistory)
+				.map(line -> toHistory(line, latestPayment.get(line.getId()), stays))
 				.toList();
 	}
 
 	private void ensureMonth(YearMonth month) {
+		removeUnpaidFuture();
+		if (month.isAfter(currentMonth())) {
+			return;
+		}
 		LocalDate start = month.atDay(1);
 		Map<Long, List<Stay>> byPerson = stayRepository.findCovering(start, month.atEndOfMonth()).stream()
 				.collect(Collectors.groupingBy(stay -> stay.getPerson().getId()));
 		Set<Long> covered = new HashSet<>();
 		for (List<Stay> stays : byPerson.values()) {
-			Stay stay = determining(stays, month);
-			if (stay != null) {
-				ensureLine(stay, month);
-				covered.add(stay.getPerson().getId());
+			if (determining(stays, month) != null) {
+				RentLine line = ensureLine(stays, month);
+				if (line != null) {
+					covered.add(line.getPerson().getId());
+				}
 			}
 		}
 		List<RentLine> stale = rentLineRepository.findByMonth(start).stream()
@@ -201,28 +229,44 @@ public class RentService {
 		}
 	}
 
-	private RentLine ensureLine(Stay stay, YearMonth month) {
+	private RentLine ensureLine(List<Stay> stays, YearMonth month) {
+		if (month.isAfter(currentMonth())) {
+			throw new BadRequestException("Cannot create rent for a future month");
+		}
+		MonthBill bill = bill(stays, month);
+		if (bill == null) {
+			return null;
+		}
 		LocalDate monthDate = month.atDay(1);
-		return rentLineRepository.findByPersonIdAndMonth(stay.getPerson().getId(), monthDate)
-				.map(line -> refreshUnpaid(line, stay))
-				.orElseGet(() -> createLine(stay, monthDate));
+		return rentLineRepository.findByPersonIdAndMonth(bill.primary().getPerson().getId(), monthDate)
+				.map(line -> refreshUnpaid(line, bill))
+				.orElseGet(() -> createLine(bill, monthDate));
 	}
 
-	private RentLine refreshUnpaid(RentLine line, Stay stay) {
+	private void removeUnpaidFuture() {
+		rentLineRepository.deleteUnpaidAfter(currentMonth().atDay(1));
+	}
+
+	private static YearMonth currentMonth() {
+		return YearMonth.now();
+	}
+
+	private RentLine refreshUnpaid(RentLine line, MonthBill bill) {
 		if (line.getAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
 			return line;
 		}
-		line.setRoom(stay.getRoom());
-		line.setAmountDue(money(stay.getAgreedRent()));
+		line.setRoom(bill.primary().getRoom());
+		line.setAmountDue(bill.amountDue());
 		return rentLineRepository.saveAndFlush(line);
 	}
 
-	private RentLine createLine(Stay stay, LocalDate monthDate) {
+	private RentLine createLine(MonthBill bill, LocalDate monthDate) {
+		Stay stay = bill.primary();
 		RentLine line = new RentLine();
 		line.setPerson(stay.getPerson());
 		line.setRoom(stay.getRoom());
 		line.setMonth(monthDate);
-		line.setAmountDue(money(stay.getAgreedRent()));
+		line.setAmountDue(bill.amountDue());
 		line.setAmountPaid(ZERO);
 		try {
 			return rentLineRepository.saveAndFlush(line);
@@ -232,16 +276,68 @@ public class RentService {
 		}
 	}
 
-	private static Stay determining(List<Stay> stays, YearMonth month) {
-		LocalDate start = month.atDay(1);
-		LocalDate end = month.atEndOfMonth();
-		List<Stay> covering = stays.stream()
-				.filter(stay -> !stay.getMoveInDate().isAfter(end))
-				.filter(stay -> stay.getMoveOutDate() == null || !stay.getMoveOutDate().isBefore(start))
+	private MonthBill bill(List<Stay> stays, YearMonth month) {
+		List<Stay> covering = covering(stays, month).stream()
+				.sorted(Comparator.comparing(Stay::getMoveInDate).thenComparing(Stay::getId))
 				.toList();
 		if (covering.isEmpty()) {
 			return null;
 		}
+		int daysInMonth = month.lengthOfMonth();
+		LocalDate monthStart = month.atDay(1);
+		LocalDate monthEnd = month.atEndOfMonth();
+		List<RentSliceResponse> occupancy = new ArrayList<>();
+		BigDecimal total = ZERO;
+		for (Stay stay : covering) {
+			LocalDate start = stay.getMoveInDate().isAfter(monthStart) ? stay.getMoveInDate() : monthStart;
+			LocalDate last = occupiedThrough(stay, stays);
+			if (last == null || last.isAfter(monthEnd)) {
+				last = monthEnd;
+			}
+			if (last.isBefore(start)) {
+				continue;
+			}
+			int days = (int) ChronoUnit.DAYS.between(start, last) + 1;
+			if (days <= 0) {
+				continue;
+			}
+			BigDecimal slice = money(stay.getAgreedRent()
+					.multiply(BigDecimal.valueOf(days))
+					.divide(BigDecimal.valueOf(daysInMonth), 2, RoundingMode.HALF_UP));
+			total = money(total.add(slice));
+			occupancy.add(new RentSliceResponse(stay.getRoom().getName(), days, slice));
+		}
+		if (occupancy.isEmpty()) {
+			return null;
+		}
+		return new MonthBill(determining(covering, month), total, occupancy);
+	}
+
+	private static LocalDate occupiedThrough(Stay stay, List<Stay> stays) {
+		LocalDate moveOut = stay.getMoveOutDate();
+		if (moveOut == null) {
+			return null;
+		}
+		boolean sameDayShift = stays.stream()
+				.anyMatch(other -> other != stay && other.getMoveInDate().equals(moveOut));
+		return sameDayShift ? moveOut.minusDays(1) : moveOut;
+	}
+
+	private static List<Stay> covering(List<Stay> stays, YearMonth month) {
+		LocalDate start = month.atDay(1);
+		LocalDate end = month.atEndOfMonth();
+		return stays.stream()
+				.filter(stay -> !stay.getMoveInDate().isAfter(end))
+				.filter(stay -> stay.getMoveOutDate() == null || !stay.getMoveOutDate().isBefore(start))
+				.toList();
+	}
+
+	private static Stay determining(List<Stay> stays, YearMonth month) {
+		List<Stay> covering = covering(stays, month);
+		if (covering.isEmpty()) {
+			return null;
+		}
+		LocalDate end = month.atEndOfMonth();
 		List<Stay> openAtEnd = covering.stream()
 				.filter(stay -> stay.getMoveOutDate() == null || stay.getMoveOutDate().isAfter(end))
 				.toList();
@@ -249,6 +345,9 @@ public class RentService {
 			return openAtEnd.stream().max(Comparator.comparing(Stay::getMoveInDate)).orElseThrow();
 		}
 		return covering.stream().max(Comparator.comparing(Stay::getMoveOutDate)).orElseThrow();
+	}
+
+	private record MonthBill(Stay primary, BigDecimal amountDue, List<RentSliceResponse> occupancy) {
 	}
 
 	private RentLineResponse toLine(RentLine line) {
@@ -265,12 +364,17 @@ public class RentService {
 				statusOf(line));
 	}
 
-	private RentHistoryResponse toHistory(RentLine line) {
+	private RentHistoryResponse toHistory(RentLine line, Payment payment, List<Stay> stays) {
+		Long paymentId = payment == null ? null : payment.getId();
+		MonthBill bill = bill(stays, YearMonth.from(line.getMonth()));
 		return new RentHistoryResponse(
 				YearMonth.from(line.getMonth()).toString(),
 				line.getAmountDue(),
 				line.getAmountPaid(),
-				statusOf(line));
+				statusOf(line),
+				paymentId,
+				paymentId == null ? null : paymentScreenshotRepository.findInfoByPaymentId(paymentId).orElse(null),
+				bill == null ? List.of() : bill.occupancy());
 	}
 
 	private PaymentResponse toPayment(Payment payment, Long personId) {

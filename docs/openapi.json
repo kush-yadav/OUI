@@ -1245,20 +1245,6 @@
                         "type": "integer",
                         "format": "int32",
                         "example": 1
-                    },
-                    "ac": {
-                        "type": "boolean",
-                        "example": true
-                    },
-                    "attachedBathroom": {
-                        "type": "boolean",
-                        "example": false
-                    },
-                    "notes": {
-                        "type": "string",
-                        "example": "Street facing",
-                        "maxLength": 500,
-                        "minLength": 0
                     }
                 },
                 "required": [
@@ -1331,15 +1317,6 @@
                         "type": "integer",
                         "format": "int32"
                     },
-                    "ac": {
-                        "type": "boolean"
-                    },
-                    "attachedBathroom": {
-                        "type": "boolean"
-                    },
-                    "notes": {
-                        "type": "string"
-                    },
                     "occupiedCount": {
                         "type": "integer",
                         "format": "int32"
@@ -1347,6 +1324,12 @@
                     "freeSpots": {
                         "type": "integer",
                         "format": "int32"
+                    },
+                    "amenities": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
                     },
                     "currentResidents": {
                         "type": "array",
@@ -1369,13 +1352,6 @@
                         "type": "string",
                         "example": "9876543210",
                         "maxLength": 30,
-                        "minLength": 0
-                    },
-                    "email": {
-                        "type": "string",
-                        "format": "email",
-                        "example": "asha@example.com",
-                        "maxLength": 200,
                         "minLength": 0
                     },
                     "notes": {
@@ -1484,9 +1460,6 @@
                     "phone": {
                         "type": "string"
                     },
-                    "email": {
-                        "type": "string"
-                    },
                     "notes": {
                         "type": "string"
                     },
@@ -1549,12 +1522,13 @@
                     },
                     "agreedRent": {
                         "type": "number",
-                        "description": "Omit to use the room's per-person rent times spots",
+                        "description": "Monthly agreed rent for this stay. Defaults in the UI to the room's per-person rent times spots",
                         "example": 7500.0,
                         "minimum": 0.0
                     }
                 },
                 "required": [
+                    "agreedRent",
                     "moveInDate",
                     "roomId"
                 ]
@@ -1682,6 +1656,10 @@
                     },
                     "name": {
                         "type": "string"
+                    },
+                    "floor": {
+                        "type": "integer",
+                        "format": "int32"
                     },
                     "sharingCapacity": {
                         "type": "integer",

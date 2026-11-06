@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface IdentityDocumentRepository extends JpaRepository<IdentityDocument, Long> {
@@ -18,5 +19,8 @@ public interface IdentityDocumentRepository extends JpaRepository<IdentityDocume
 			where d.person.id = :personId
 			""")
 	Optional<IdentityDocumentResponse> findInfoByPersonId(@Param("personId") Long personId);
+
+	@Query("select d.person.id from IdentityDocument d")
+	List<Long> findPersonIds();
 
 }

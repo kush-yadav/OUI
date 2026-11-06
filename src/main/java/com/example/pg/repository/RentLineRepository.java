@@ -2,7 +2,9 @@ package com.example.pg.repository;
 
 import com.example.pg.entity.RentLine;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -36,5 +38,13 @@ public interface RentLineRepository extends JpaRepository<RentLine, Long> {
 			order by line.month
 			""")
 	List<RentLine> findByPersonId(Long personId);
+
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			delete from RentLine line
+			where line.month > :currentMonthStart
+			and line.amountPaid = 0
+			""")
+	int deleteUnpaidAfter(@Param("currentMonthStart") LocalDate currentMonthStart);
 
 }

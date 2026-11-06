@@ -877,12 +877,6 @@ components:
           example: "9876543210"
           maxLength: 30
           minLength: 0
-        email:
-          type: string
-          format: email
-          example: asha@example.com
-          maxLength: 200
-          minLength: 0
         notes:
           type: string
           example: "Emergency contact: Ravi, 9988776655"
@@ -957,8 +951,6 @@ components:
         name:
           type: string
         phone:
-          type: string
-        email:
           type: string
         notes:
           type: string

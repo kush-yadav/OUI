@@ -34,12 +34,4 @@ public class Room {
 
 	private Integer floor;
 
-	private Boolean ac;
-
-	@Column(name = "attached_bathroom")
-	private Boolean attachedBathroom;
-
-	@Column(length = 500)
-	private String notes;
-
 }
