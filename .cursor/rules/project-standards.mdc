@@ -1,0 +1,48 @@
+---
+description: Core standards for the pg service
+alwaysApply: true
+---
+
+# Project standards
+
+KISS and YAGNI. Add a dependency, package, exception, or migration version only when a real case needs it. Ask before adding a layer that is not listed here. Product behavior comes from `docs/`. Do not invent it.
+
+## Packages
+
+Base package `com.example.pg`. Allowed packages: `controller`, `dto`, `entity`, `repository`, `service`, `exception`, and `config` only when a `@Configuration` class is required.
+
+Constructor injection. Controllers call services and return DTOs. Mapping stays in the service.
+
+Records everywhere, including request and response DTOs. A JPA `@Entity` that needs a no-arg constructor and mutation is a class with Lombok.
+
+## HTTP
+
+No auth. Do not add Spring Security.
+
+No response wrapper. `200` and `201` return the DTO. `201` also sets `Location`. `202` and `204` have an empty body. No `/api/v1` prefix unless `docs/` requires it.
+
+Errors are RFC 9457 Problem Details (`application/problem+json`) from one `@RestControllerAdvice`. `type` is a relative URI such as `/problems/not-found`. Invalid input is Bean Validation, mapped to 400.
+
+Add `NotFoundException` (404), `ConflictException` (409), `BadRequestException` (400), or `DbException` (500) only when a feature needs that case. `DbException` must not leak SQL.
+
+```java
+// 201 Created
+return ResponseEntity.created(URI.create("/payments/" + id)).body(response);
+
+// 204 No Content
+return ResponseEntity.noContent().build();
+```
+
+Document every endpoint with springdoc, including problem-details responses.
+
+## Data
+
+Spring Data JPA and MySQL. Flyway owns the schema. Hibernate must not create or update tables.
+
+Keep a single `V1` migration and edit it in place until the first real deploy. After deploy, add `V2+` and stop editing applied versions. Recreate the local database when `V1` changes.
+
+External services run in Docker Compose. MySQL is the local service. Do not add other services until something needs them.
+
+## Tests
+
+Build features first. When the testing phase starts, add unit tests and integration tests with Testcontainers MySQL. Compose stays for local development.
